@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option go_package = "github.com/jmz331/nrpc";
+
+package nrpc;
+
+message NRPCRequest {
+    string service_name = 1;
+    string method_name = 2;
+    bytes data = 3;
+}
+
+message NoReply {
+}

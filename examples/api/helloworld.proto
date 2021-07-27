@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-option go_package = "github.com/jmz331/nrpc/examples";
+option go_package = "github.com/jmz331/nrpc/examples/api";
 
-package examples;
+package examples.api;
 
 service GreeterService {
     // Sends a greeting
