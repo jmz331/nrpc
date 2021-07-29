@@ -35,7 +35,7 @@ func NewGreeterServiceHandler(ctx context.Context, nc nrpc.NatsConn, s GreeterSe
 }
 
 func (h *GreeterServiceHandler) Subject() string {
-	return "examples.api.GreeterService.>"
+	return "examples.api.GreeterService"
 }
 
 func (h *GreeterServiceHandler) Subscribe() error {
@@ -55,49 +55,27 @@ func (h *GreeterServiceHandler) Handler(msg *nats.Msg) {
 	var ctx = h.ctx
 	//subject: pkg.service.method
 
-	req := new(nrpc.NRPCRequest)
-	err := proto.Unmarshal(msg.Data, req)
+	request := new(nrpc.NRPCRequest)
+	err := proto.Unmarshal(msg.Data, request)
 	if err != nil {
 		//todo 处理异常情况
 		return
 	}
 
-	request := nrpc.NewRequest(ctx, h.nc, msg.Subject, msg.Reply)
-	// extract method name & encoding from subject
-	_, _, name, tail, err := nrpc.ParseSubject(
-		"examples.api", 0, "GreeterService", 0, msg.Subject)
-	if err != nil {
-		log.Printf("GreeterServiceHanlder: GreeterService subject parsing failed: %v", err)
-		return
-	}
-
-	request.MethodName = name
-	request.SubjectTail = tail
-
-	// call handler and form response
 	var immediateError *nrpc.Error
-	switch name {
+	var res proto.Message
+	switch request.MethodName {
 	case "SayHello":
-		_, request.Encoding, err = nrpc.ParseSubjectTail(0, request.SubjectTail)
+		req := new(HelloRequest)
+		err := proto.Unmarshal(request.Data, req)
 		if err != nil {
-			log.Printf("SayHelloHanlder: SayHello subject parsing failed: %v", err)
-			break
+			//todo 处理异常情况
+			return
 		}
-		var req HelloRequest
-		if err := nrpc.Unmarshal(request.Encoding, msg.Data, &req); err != nil {
-			log.Printf("SayHelloHandler: SayHello request unmarshal failed: %v", err)
-			immediateError = &nrpc.Error{
-				Type:    nrpc.Error_CLIENT,
-				Message: "bad request received: " + err.Error(),
-			}
-		} else {
-			request.Handler = func(ctx context.Context) (proto.Message, error) {
-				innerResp, err := h.server.SayHello(ctx, req)
-				if err != nil {
-					return nil, err
-				}
-				return &innerResp, err
-			}
+		res, err = h.server.SayHello(ctx, req)
+		if err != nil {
+			//todo 处理异常情况
+			return
 		}
 	default:
 		log.Printf("GreeterServiceHandler: unknown name %q", name)
@@ -106,23 +84,14 @@ func (h *GreeterServiceHandler) Handler(msg *nats.Msg) {
 			Message: "unknown name: " + name,
 		}
 	}
-	if immediateError == nil {
-		if h.workers != nil {
-			// Try queuing the request
-			if err := h.workers.QueueRequest(request); err != nil {
-				log.Printf("nrpc: Error queuing the request: %s", err)
-			}
-		} else {
-			// Run the handler synchronously
-			request.RunAndReply()
-		}
+	resData, err := proto.Marshal(res)
+	if err != nil {
+		//todo 处理异常情况
+		return
 	}
-
-	if immediateError != nil {
-		if err := request.SendReply(nil, immediateError); err != nil {
-			log.Printf("GreeterServiceHandler: GreeterService handler failed to publish the response: %s", err)
-		}
-	} else {
+	if err = h.nc.Publish(msg.Reply, resData); err != nil {
+		//todo 处理异常情况
+		return
 	}
 }
 
