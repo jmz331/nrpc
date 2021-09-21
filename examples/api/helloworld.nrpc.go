@@ -50,7 +50,6 @@ func (h *GreeterServiceHandler) Subscribe() error {
 func (h *GreeterServiceHandler) Unsubscribe() error {
 	return h.sub.Unsubscribe()
 }
-
 func (h *GreeterServiceHandler) Handler(msg *nats.Msg) {
 	var ctx = h.ctx
 	//subject: pkg.service.method
@@ -103,62 +102,27 @@ func (h *GreeterServiceHandler) Handler(msg *nats.Msg) {
 }
 
 type GreeterServiceClient struct {
-	nc         nrpc.NatsConn
-	PkgSubject string
-	Subject    string
-	Encoding   string
-	Timeout    time.Duration
+	nc          nrpc.NatsConn
+	PkgSubject  string
+	ServiceName string
+	Timeout     time.Duration
 }
 
 func NewGreeterServiceClient(nc nrpc.NatsConn) *GreeterServiceClient {
 	return &GreeterServiceClient{
-		nc:         nc,
-		PkgSubject: "examples.api",
-		Subject:    "GreeterService",
-		Encoding:   "protobuf",
-		Timeout:    5 * time.Second,
+		nc:          nc,
+		PkgSubject:  "examples.api",
+		ServiceName: "GreeterService",
+		Timeout:     5 * time.Second,
 	}
 }
 
 func (c *GreeterServiceClient) SayHello(req *HelloRequest) (resp *HelloReply, err error) {
-	subject := c.PkgSubject + "." + c.Subject + "." + "SayHello"
 	// call
-	err = nrpc.Call(req, resp, c.nc, subject, c.Timeout)
+	resp = new(HelloReply)
+	err = nrpc.Call(req, resp, c.nc, c.PkgSubject, c.ServiceName, "SayHello", c.Timeout)
 	if err != nil {
 		return // already logged
 	}
 	return
-}
-
-type Client struct {
-	nc              nrpc.NatsConn
-	defaultEncoding string
-	defaultTimeout  time.Duration
-	pkgSubject      string
-	GreeterService  *GreeterServiceClient
-}
-
-func NewClient(nc nrpc.NatsConn) *Client {
-	c := Client{
-		nc:              nc,
-		defaultEncoding: "protobuf",
-		defaultTimeout:  5 * time.Second,
-		pkgSubject:      "examples.api",
-	}
-	c.GreeterService = NewGreeterServiceClient(nc)
-	return &c
-}
-
-func (c *Client) SetEncoding(encoding string) {
-	c.defaultEncoding = encoding
-	if c.GreeterService != nil {
-		c.GreeterService.Encoding = encoding
-	}
-}
-
-func (c *Client) SetTimeout(t time.Duration) {
-	c.defaultTimeout = t
-	if c.GreeterService != nil {
-		c.GreeterService.Timeout = t
-	}
 }

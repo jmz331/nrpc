@@ -32,7 +32,7 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s error: %s", Error_Type_name[int32(e.Type)], e.Message)
 }
 
-func Call(req proto.Message, rep proto.Message, nc NatsConn, subject string, timeout time.Duration) error {
+func Call(req proto.Message, rep proto.Message, nc NatsConn, pkgSubject, serviceName, methodName string, timeout time.Duration) error {
 	// encode request
 	rawRequest, err := proto.Marshal(req)
 	if err != nil {
@@ -40,7 +40,19 @@ func Call(req proto.Message, rep proto.Message, nc NatsConn, subject string, tim
 		log.Printf("nrpc: inner request marshal failed: %v", err)
 		return err
 	}
+	// encode nrpc request
+	rawRequest, err = proto.Marshal(&NRPCRequest{
+		ServiceName: serviceName,
+		MethodName:  methodName,
+		Data:        rawRequest,
+	})
+	if err != nil {
+		//todo 处理异常情况日志输出
+		log.Printf("nrpc: inner request marshal failed: %v", err)
+		return err
+	}
 
+	subject := pkgSubject + "." + serviceName + "." + methodName
 	// call
 	if _, isNoReply := rep.(*NoReply); isNoReply {
 		err := nc.Publish(subject, rawRequest)

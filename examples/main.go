@@ -18,7 +18,9 @@ func main() {
 	}
 	defer nc.Close()
 
-	err = run(api.NewGreeterServiceHandler(ctx, nc, &server{}))
+	err = run(
+		api.NewGreeterServiceHandler(ctx, nc, NewGreeterServiceHandler()),
+	)
 	if err != nil {
 		panic(err)
 	}
