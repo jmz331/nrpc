@@ -3,7 +3,7 @@ package api
 
 import (
 	"context"
-	"log"
+	"errors"
 	"time"
 
 	"github.com/jmz331/nrpc"
@@ -35,7 +35,7 @@ func NewGreeterServiceHandler(ctx context.Context, nc nrpc.NatsConn, s GreeterSe
 }
 
 func (h *GreeterServiceHandler) Subject() string {
-	return "examples.api.GreeterService"
+	return "examples.api.GreeterService.>"
 }
 
 func (h *GreeterServiceHandler) Subscribe() error {
@@ -56,40 +56,47 @@ func (h *GreeterServiceHandler) Handler(msg *nats.Msg) {
 	//subject: pkg.service.method
 
 	request := new(nrpc.NRPCRequest)
-	err := proto.Unmarshal(msg.Data, request)
-	if err != nil {
-		//todo 处理异常情况
+	var err error
+	if err := proto.Unmarshal(msg.Data, request); err != nil {
+		//todo 处理异常情况日志输出
 		return
 	}
 
-	var immediateError *nrpc.Error
 	var res proto.Message
 	switch request.MethodName {
 	case "SayHello":
 		req := new(HelloRequest)
-		err := proto.Unmarshal(request.Data, req)
-		if err != nil {
-			//todo 处理异常情况
-			return
+		if err = proto.Unmarshal(request.Data, req); err != nil {
+			//todo 处理异常情况日志输出
+			break
 		}
-		res, err = h.server.SayHello(ctx, req)
-		if err != nil {
-			//todo 处理异常情况
-			return
+		if res, err = h.server.SayHello(ctx, req); err != nil {
+			//todo 处理异常情况日志输出
+			break
 		}
 	default:
-		log.Printf("GreeterServiceHandler: unknown name %q", name)
-		immediateError = &nrpc.Error{
-			Type:    nrpc.Error_CLIENT,
-			Message: "unknown name: " + name,
+		//todo 处理异常情况日志输出
+		err = errors.New("unknown name: " + request.MethodName)
+	}
+	var data []byte
+	if err != nil {
+		//todo 处理错误，转换成gRPC错误类型
+		data, err = proto.Marshal(&nrpc.Error{
+			Type:    nrpc.Error_SERVER,
+			Message: err.Error(),
+		})
+		if err != nil {
+			//todo 处理异常情况日志输出
+			return
+		}
+	} else {
+		if data, err = proto.Marshal(res); err != nil {
+			//todo 处理异常情况
+			return
 		}
 	}
-	resData, err := proto.Marshal(res)
-	if err != nil {
-		//todo 处理异常情况
-		return
-	}
-	if err = h.nc.Publish(msg.Reply, resData); err != nil {
+
+	if err = h.nc.Publish(msg.Reply, data); err != nil {
 		//todo 处理异常情况
 		return
 	}
@@ -113,16 +120,13 @@ func NewGreeterServiceClient(nc nrpc.NatsConn) *GreeterServiceClient {
 	}
 }
 
-func (c *GreeterServiceClient) SayHello(req HelloRequest) (resp HelloReply, err error) {
-
+func (c *GreeterServiceClient) SayHello(req *HelloRequest) (resp *HelloReply, err error) {
 	subject := c.PkgSubject + "." + c.Subject + "." + "SayHello"
-
 	// call
-	err = nrpc.Call(&req, &resp, c.nc, subject, c.Encoding, c.Timeout)
+	err = nrpc.Call(req, resp, c.nc, subject, c.Timeout)
 	if err != nil {
 		return // already logged
 	}
-
 	return
 }
 
